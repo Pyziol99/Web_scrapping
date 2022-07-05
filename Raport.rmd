@@ -1,0 +1,319 @@
+---
+title: "Analiza zapotrzebowania na kwalifikacje pracowników z branży IT"
+author: "Karol Pyziołek"
+date: "18.06.2022"
+output:
+    html_document: 
+      number_sections: yes
+      theme: united
+      toc: yes
+      toc_float: yes
+      dev: svg
+      highlight: haddock
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+opts_chunk$set(
+  echo = TRUE,
+  cache = FALSE,
+  prompt = FALSE,
+  tidy = TRUE,
+  comment = NA,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 7.4,
+  fig.height = 4.7,
+  fig.align = "center"
+)
+opts_knit$set(width = 75)
+```
+
+<style> 
+
+/* Jeśli znasz CSS,  to możesz wygląd dostosować do swoich preferencji */
+/* Możesz też usunąć tę część: style  */
+
+tr {font-family: 'Fira Mono'; font-size:90%}
+code, kbd,pre,samp {font-family: 'Fira Mono';
+                    background-color: rgba(237, 125, 49, 0.04)}
+body, h1, h2, h3, h4, h5 {font-family: 'Fira Sans'}
+
+</style>
+
+# Problem badawczy
+Problemem biznesowym i jednocześnie badawczym, który zostanie w tym sprawozdaniu omówione, jest analiza zapotrzebowania na specjalistów z branży IT. Pytania badawcze jakie zostały postawione:
+
+1. Na jakiego rodzaju stanowiska jest największe zapotrzebowanie na rynku?
+2. W jakich środowiskach najczęściej pracują specjaliści z branży IT?
+3. Posiadanie jakich umiejętności jest najlepiej płatne?
+
+Informacje, potrzebne do znalezienia odpowiedź na pytania badawcze zostały pozyskane z portalu [NoFluffJobs][id]. Jest on transparentnym portalem z ofertami pracy w branży IT, który wymaga od pracodawców zamieszczania w ogłoszeniach widełek płacowych, wykorzystywanych technologiach oraz konkrety opis działań na stanowisku.
+
+Dane zostały uzyskane za pomocą metody _web scrappingu_. Pozyskiwane informacjami, które zostaną podane analizie są:
+
+- Nazwa przedsiębiorstwa
+- Stanowisko pracy
+- Doświadczenie
+- Technologia 
+- Wymagania pracodawcy
+- Widełki płacowe
+- Rodzaj umowy
+
+
+# Dane
+## Web scrapping
+Biblioteki wykorzystane do projektu:
+```{r}
+library(tidyverse)
+library(stringi)
+library(rvest)
+library(dplyr)
+library(httr)
+library(quantmod)
+
+```
+Aby móc uzyskać dane potrzebne do analizy należało przeprowadzić szereg czynności, które zostały podzielone na załączniki. 
+### "GET_urls.R" 
+Pierwszą czynnością po wczytaniu danych było stworzenie bazy wszystkich stron katalogu do wyszukiwania ofert. Aby uzyskać maksymalną liczbę ofert zaznaczono wszystkie możliwe lokalizacje, a następnie utworzono 442 linki do kolejnych stron wyszukiwania na portalu.
+
+Następnie z wygenerowanych linków rozpoczęto ściąganie linków w pętli for do konkretnych ofert pracy. Linki są uzyskiwane poprzez użycie odpowiednich- oryginalnych elementów _CSS_. W kodzie została uwzględniona obsługa błędów w ramach funkcji _tryCatch_, aby uniknąć przedwczesnego zakończenia ściągania danych w wyniku błędu. 
+
+
+### "GET_Content.R" 
+Po uzyskaniu konkretnych linków do ofert, na ich podstawie, po wczytaniu wyeksportowanego wcześniej pliku _.csv_ rozpoczęto ściąganie danych szczegółowych. Procedura ściągania jest analogiczna do pozyskiwania linków URL. Przy ostatniej iteracji pętli dane są zapisywane jako ramka danych oraz eksportowane do pliku.
+
+### "Data_initial_cleaning.R"
+Otrzymano ramkę danych o 8808 wierszach i 6 linijkach. 
+We wstępnej fazie czyszczenia należało:
+ 1. Zmienić nazwę urlsCatalog na url
+ 2. Usunąć bezpłatne oferty stażowe
+ 3. Usunąć zdublowane oferty. Pewne oferty były powielane dla kilku lokalizacji.
+ 4. Zostawić tylko nazwę firmy z kolumny _title_company_.
+ 5. Zastąpić kolumnę _category_ jako _position_.
+ 6. Wybrać tylko minimalny poziom doświadczenia i nadpisać kolumnę _level_
+ 7. Usunąć polskie znaki z kolumny _salary_
+ 
+### "Functions.R" 
+ Funkcja _SalaryContract_ tworzy nową kolumnę na podstawie wybranej kolumny z ramki danych z rozdzielonymi zarobkami. Nadając jej nazwę w zależności od rodzaju kontraktu to jest Business to Business, Umowa o Pracę, Umowa Zlecenie, i Umowa o Dzieło. W każdej komórce umieszcza widełki płacowe, informacje co do okresu płacy oraz waluty. 
+ 
+ Funkcja _ConversionToPLN_- już przetworzone kolumny z podziałem na rodzaje zarobków rozdziela ze względu na maksymalne i minimalne widełki w osobnych kolumnach oraz przewalutowuje na podstawie obecnych kursów i wyrównuje stawki tygodniowe i dzienne do stawek miesięcznych. Funkcja bierze aktualny kurs danych z serwisu _Yahoo Finance_ przy użyciu funkcji _getQuote_ z biblioteki _quantmod_. Ten zabieg znacznie spowalnia iterację już nie zalecanej do użytu w środowisku R pętli for. Aby uniknąć każdorazowej komunikacji ze stroną przy wywoływaniu funkcji umieszczone zostały zamiennie sztywne kursy wymiany walut na PLN na dzień 17.06.2022
+
+ Funkcja _Cleaning_requirements_ która tworzy rozdziela kolumnę requirements na kolumny logiczne za pomocą funckji map dla danej umiejętności, w zależności czy jest ona wymagana w danej ofercie. funckja wybiera wymagania, które pojawiają się w przynajmniej 10% ofert.
+
+### "Data_cleaning_salary.R"
+ W kolejnym załączniku który porządkuje początkową kolumnę Salary w pierwszej kolejności zarobki dzielone są według znaku "|" funkcją _stri_split_ i zapisuje do ramki danych. Powstaje 9 kolumn z zarobkami z których tylko pierwsza nie zawiera pustych wartości. Następnie dla 3 pierwszych kolumn zarobkowych używa kolejno wcześniej utworzonych funkcji _SalaryContract_, a następnie _ConversionToPLN_. Na końcu usuwa niepotrzebne już kolumny. Tym samym zwraca ramkę danych po wstępnym czyszczeniu z kolumną salary rozbitą na minimalną i maksymalną wartość zarobku dla danego typu umowy oraz zunifikowaną co do waluty i okresu płacy. Wynik zapisuje do pliku. 
+ 
+### "Final_dataset.R"
+W ostatnim pliku jest tworzona końcowa ramka danych, która zlepia za pomocą funkcji _cbind_ ramkęutworzone w pliku _"Data_cleaning_salary.R"_ oraz za pomocą funkcji _Cleaning_requirements_. Została uzyskana ramka danych o 4169 wierszach i 115 kolumnach. Zostanie ona poddana właściwej analizie. Dane zostały zapisane w pliku _Final_dataset.csv_
+
+# Analiza danych
+## Analiza stanowisk i wymagań 
+Wczytano utworzoną ramkę danych i sprawdzono na jakie stanowiska jest największe zapotrzebowanie na rynku.
+```{r}
+df<- read_csv2("Final_dataset.csv") # wczytanie bazy
+
+df$minLevel <- factor(df$level, levels = c("Trainee", "Junior", "Mid", "Senior", "Expert"), ordered = TRUE) # stworzenie  czynnika
+
+df<- filter( df , df$salary1B2BMin != "NA") # usunięcie niepotrzebnych wierszy
+
+req<- df[25:115] # zebranie wymagań to jednej tabeli
+
+req %>% sapply(sum) %>%  sort( decreasing = TRUE) -> reqTable # Zsumowanie wymagań które się najczęściej powtarzane
+
+topReq <- reqTable[1:20] #  wybranie 20 najważniejszych 
+
+topReq <- req[c("sql","javascript" ,"java" ,"python"  ,"rest" ,"linux", "react" ,".net" ,"css","html", "docker" )]#wybranie technicznych umiejętności
+
+topReq %>% sapply(sum) %>%  sort( decreasing = TRUE) -> reqTopTable #zsumowanie wymagań 
+# (reqTopTable["javascript"] + reqTopTable["java"]) są to inne umiejętności dlatego nie sumujemy 
+ reqTopTable.Df <- reqTopTable %>%  as.data.frame() # stworzenie ramki danych dla wykresu
+ 
+reqTopTable.Df <- data_frame( reqTopTable.Df,row.names(reqTopTable.Df)) # dodanie kolumny z nazywani wymagań  
+
+names(reqTopTable.Df) <- c("Count", "Requirements") # Nazwanie kolumn
+
+reqTopTable.Df <-  reqTopTable.Df %>%  group_by(Count) %>%   summarise( Requirements, Count = sort(Count, decreasing = TRUE)) # zgrupowanie kolumn dla wykresu 
+
+plot.reqTopTable.Df <- ggplot(reqTopTable.Df, aes(x=reorder(Requirements,Count) , y = Count )) +
+  geom_point(size= 4 , colour="#FF1133", alpha=0.9)+
+  labs( x=  "Wymagania" , y = "Liczba") # kod wykresu
+plot.reqTopTable.Df
+
+```
+Jak widać najwięcej potrzebnych jest specjalistów, którzy programują w SQL, Javie, JavaScripcie lub Pythonie. Najczęściej pracodawcy szukają specjalistów z branży IT, którzy programują w tych językach. Na które stanowiska jest najwięcej ogłoszeń?
+```{r}
+ reqPosTab <- df$position %>% table() %>% sort( decreasing = TRUE)
+ reqPosTab[1:4] #  Stanowiska
+```
+ Gdy znane są już najczęściej poszukiwane stanowiska pracy, zbadajmy jakie kursy są potrzebne dla najpopularniejszych stanowisk.
+```{r}
+## zestawienie wymagani z pozycjami
+
+reqPos<- df[c("position", "sql","javascript" ,"java" ,"python"  ,"rest" ,"linux", "react" ,".net" ,"css","html", "docker")] #Najważniejsze wymagania
+
+############## wykres Backend
+reqPosBack <-  filter(reqPos, position==  "Backend")
+reqPosBack <- reqPosBack[-1] %>% sapply(sum) %>% sort( decreasing = TRUE) 
+
+reqPosBack.Df <- reqPosBack %>%  as.data.frame()
+
+reqPosBack.Df <- data_frame( reqPosBack.Df,row.names(reqPosBack.Df))
+
+names(reqPosBack.Df) <- c("Count", "Requirements")
+
+plot.reqPosBack.Df <- ggplot(reqPosBack.Df, aes(x=reorder(Requirements ,Count) , y = Count )) +
+  geom_point(size= 4 , colour="#FF00AA", alpha=0.9)+
+  labs( x=  "Wymagania_dla_Backend" , y = "Liczba")
+
+plot.reqPosBack.Df
+
+############# wykres Frontend
+
+reqPosFront <-  filter(reqPos, position==  "Frontend")
+reqPosFront<- reqPosFront[-1] %>% sapply(sum)%>% sort( decreasing = TRUE)
+
+reqPosFront.Df <- reqPosFront %>%  as.data.frame()
+
+reqPosFront.Df <- data_frame( reqPosFront.Df,row.names(reqPosFront.Df))
+
+names(reqPosFront.Df) <- c("Count", "Requirements")
+
+plot.reqPosFront.Df <- ggplot(reqPosFront.Df, aes(x=reorder(Requirements ,Count) , y = Count )) +
+  geom_point(size= 4 , colour="#FFAF24", alpha=0.9)+
+  labs( x=  "Wymagania_dla_Frontend" , y = "Liczba")
+
+plot.reqPosFront.Df
+
+############ wykres Fullstack
+
+reqPosFull <-  filter(reqPos, position==  "Fullstack")
+reqPosFull <- reqPosFull[-1] %>% sapply(sum) %>% sort( decreasing = TRUE)
+
+reqPosFull.Df <- reqPosFull %>%  as.data.frame()
+
+reqPosFull.Df <- data_frame( reqPosFull.Df,row.names(reqPosFull.Df))
+
+names(reqPosFull.Df) <- c("Count", "Requirements")
+
+plot.reqPosFull.Df <- ggplot(reqPosFull.Df, aes(x=reorder(Requirements ,Count) , y = Count )) +
+  geom_point(size= 4 , colour="#005555", alpha=0.9)+
+  labs( x=  "Wymagania_dla_Fullstack" , y = "Liczba")
+
+plot.reqPosFull.Df
+
+############ wykres Testing
+reqPosTest <-  filter(reqPos, position==  "Testing")
+reqPostTest <- reqPosTest[-1] %>% sapply(sum) %>% sort( decreasing = TRUE)
+
+reqPosTest<-  filter(reqPos, position==  "Testing")
+reqPosTest <- reqPosTest[-1] %>% sapply(sum) %>% sort( decreasing = TRUE)
+
+reqPosTest.Df <- reqPosTest %>%  as.data.frame()
+
+reqPosTest.Df <- data_frame( reqPosTest.Df,row.names(reqPosTest.Df))
+
+names(reqPosTest.Df) <- c("Count", "Requirements")
+
+
+
+plot.reqPosTest.Df <- ggplot(reqPosTest.Df, aes(x=reorder(Requirements ,Count) , y = Count )) +
+  geom_point(size= 4 , colour="#00FF55", alpha=0.9)+
+  labs( x=  "Wymagania_dla_Testing" , y = "Liczba")
+plot.reqPosTest.Df
+```
+Dla pracowników którzy chcą się ubiegać  o stanowisko w Backendzie najważniejszymi środowiskami pracy jest JavaScript oraz SQL. Osoby, które są zainteresowane pracą jako Frontend developer powinny znać środowiska Javascrpint, React oraz HTML i CSS. Należy jednak pamiętać, że wymaganiem minimalnym do pracy we Frontendzie zawsze jest HTML oraz CSS. Być może więc dużo firm wystawiając ogłoszenia traktuje znajomość HTML i CSS jako rzecz oczywistą. W przypadku Fullstack developera najważniejsza jest znajomości Javy, Javascripta i .Neta. Stanowiska w Testingu wymagają od pracownika znajomości SQL oraz Javy.
+
+## Analiza zarobków
+W związku z różnicami kwot zarobków na innych umowach to znaczy pięć tysięcy na umowie o pracę nie równa się pięciu tysiącom w relacji pracy B2B zarobki zostaną przeanalizowane  wyłącznie dla kontraktów B2B. W podrozdziale analiza wymagań i stanowisk dane zostały przefiltrowane. Sprawdzony został rozkład wypłat w zależności od minimalnego poziomu potrzebnego doświadczenia. W dalszej analizie wynagrodzenia zostały ograniczone od 5 do 95 kwantylu.
+```{r}
+df$salary1B2B <- (df$salary1B2BMin+df$salary1B2BMax)/2
+quantBalance <- quantile(df$salary1B2B, probs = c(0.05, 0.95)) # usuwanie wartości  odstajacych 
+histSalaryB2BCut<- df%>% filter( df$salary1B2B > quantBalance[1],df$salary1B2B < quantBalance[2] )
+histSalaryB2BLev <- ggplot(histSalaryB2BCut , aes( x = salary1B2B ))
+histSalaryB2BLev + geom_histogram(bins = 20 ,  fill = "#FFAF24" ) + labs( x = "Wynagrodzenie w PLN" , y = "Liczba") + facet_wrap(~minLevel, scales = "free_y")
+
+
+```
+Wartości rozkładów są zgodne z intuicją. Eksperci mają wykres zdominowany rozkładem wyższych wartości. Mid przypomina najbardziej rozkład normalny. 
+
+Utworzono histogram dla każdego stanowiska, aby sprawdzić na, którym stanowisku specjaliści zarabiają najlepiej:
+```{r}
+histSalaryB2B <- ggplot(histSalaryB2BCut , aes( x = salary1B2B ))
+histSalaryB2B + geom_histogram(bins = 20 ,  fill = "#5533FF" ) + labs( x = "Wynagrodzenie w PLN" , y = "Liczba") + facet_wrap(~position, scales = "free_y")
+
+```
+Stanowiskiem, dla którego rozkład płac jest najbardziej przesunięty w prawo jest DevOps. Sprawdzono najważniejsze wymagania dla DevOpsa oraz czy poziom wynagrodzenia DevOpsów nie jest zwiększony przez zapotrzebowanie na doświadczonych pracowników. 
+```{r}
+tab <- table(histSalaryB2BCut$position,histSalaryB2BCut$minLevel)
+tab <- data.frame(tab)
+colnames(tab) <- c("position", "minLevel", "Count")
+filter(tab, position == "DevOps") %>%  select( minLevel, Count) %>% ggplot( aes(x = minLevel , y = Count)) + geom_point(size= 4 , colour="#E64060", alpha=0.9) + labs( x=  "Doświadczenie_dla_DevOps" , y = "Liczba")
+
+```
+ Sporządzono wykres dla reszty stanowisk.
+```{r}
+tabWszyskich <-  filter(tab, position != "DevOps") %>% select( minLevel, Count)
+tabWszyskich %>% group_by( minLevel) %>% summarise( liczba= sum(Count)) %>% ggplot( aes(x = minLevel , y = liczba)) + geom_point(size= 4 , colour="#005555", alpha=0.9) + labs( x=  "Doświadczenie_dla_reszty_stanowisk" , y = "Liczba")
+
+```
+Porównując oba rozkłady można stwierdzić, że wśród specjaliści DevOpsi zarabiają najlepiej. Sprawdzono wymagania jakie są potrzebne na stanowisku DevOps.
+
+```{r}
+DevOpsPos <- filter(histSalaryB2BCut, position=="DevOps")[25:115] %>% sapply( sum) %>% sort( decreasing = TRUE)
+DevOpsPos[1:20]
+DevOpsPos<- DevOpsPos[c(2,3,4,5,6,7,8,11,13,14,15,18,19)] %>% as.data.frame()  # wybieramy techniczne
+DevOpsPos<- data.frame(DevOpsPos, row.names(DevOpsPos))
+colnames(DevOpsPos) <- c("liczba" , "position")
+ ggplot(DevOpsPos, aes(x = reorder( position, liczba), y = liczba  )) + geom_point(size= 4 , colour="#FF00AA", alpha=0.9)+
+  labs( x=  "Wymagania_na stanowisku" , y = "Liczba")
+
+```
+Wymagania na stanowisko DevOps odbiegają od najczęściej powtarzających się. To może oznaczać, że przyszli pracownicy będą woleli uczyć technologi potrzebnych na stanowisku DevOps, ponieważ są lepiej płatne. Nie idzie to w parze z zapotrzebowaniem pracodawców.
+Sprawdzono  również czy posiadając umiejętności z doświadczeniem Juniorskim można zarabiać więcej niż niektórzy seniorzy oraz, jakie umiejętności posiadają ci pracownicy. Sprawdzono również stanowiska do jakich są przypisane oferty.
+```{r}
+SalaryJunior <-histSalaryB2BCut %>%  filter(  minLevel=="Junior" , salary1B2B>=15000)
+SalaryJuniorTab <- SalaryJunior[25:115] %>% sapply( sum) %>% sort(decreasing = TRUE)
+SalaryJuniorTab[1:20]
+table(SalaryJunior$position)
+```
+Ofert w, których juniorzy zarabiają więcej od seniorów jest niewiele. Większość ofert pochodzi z stanowisk Backend, czyli stanowisk z największą liczbą ogłoszeń. Umiejętności twarde, który powtarzały się najwięcej razy to Git oraz Java.
+```{r}
+SalarySenior <- histSalaryB2BCut %>%  filter(  minLevel=="Senior", salary1B2B < 15000) 
+SalarySeniorTab <- SalarySenior[25:115] %>% sapply( sum) %>% sort(decreasing = TRUE)
+SalarySeniorTab[1:20]
+table(SalarySenior$position) 
+```
+Liczba ogłoszeń badanych przypadków jest bardzo mała, dlatego uważamy to za mało istotne.Sprawdzono również liczbę firm, które  ogłaszały oferty pracy.
+```{r}
+df$company %>%  unique() %>% length() # liczba firm
+x <- df$company %>% table() %>%  sort(decreasing = TRUE) # liczba ogłoszeń
+x[1:20] #  firmy z największa liczba ogłoszeń
+```
+Najwięcej ofert pracy wystawiła firma Link Group. Sprawdzono średnie zarobki w tej firmie oraz z jakim doświadczeniem, i na jakie stanowiska są potrzebni pracownicy.
+```{r}
+companydf <- filter( histSalaryB2BCut, company=="Link Group")
+mean(companydf$salary1B2B)
+table(companydf$minLevel) %>% plot()
+table(companydf$position) %>% sort(decreasing = TRUE)
+```
+Średnia zarobków jest wyższa od średniej zarobków wszystkich ogłoszeń. Rozkład zapotrzebowania ze względu na doświadczenie przypomina normalny. Przedsiębiorstwo ma największe zapotrzebowanie na developerów Backend oraz Testing.
+
+# Podsumowanie
+Zostały poczynione pewne uproszczenia podczas analizy. Zarobki zostały przeanalizowane jedynie na podstawie umów B2B. Zdecydowano się wybrać taki rodzaj umów z uwagi na największą liczbę ogłoszeń przy wybranej zmiennej. W drugiej cześć analizy pominięto pierwsze i ostatnie 5% danych aby ograniczyć przypadki skrajne. Opowiadając na zadane pytania badawcze:    
+
+| Pytanie Badawcze                                                        | Wynik Analizy                                                                                                                                                                                                                                                                       |
+|-------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Na jakiego rodzaju stanowiska jest największe zapotrzebowanie na rynku? | Największe zapotrzebowanie jest na backend, potem na frontend, fullstack i testing developerów. Zależnie od  stanowiska jest zapotrzebowanie na inne zestawy umiejętności technicznych.                                                                                             |
+| W jakich środowiskach technologicznych pracują specjaliści z branży IT? | W przeanalizowanej bazie danych najczęściej występującymi środowiskami w ogłoszeniach są Java, Javascript, oraz SQL.                                                                                                                                                                |
+| Specjaliści z jakimi umiejętnościami najwięcej zarabiają?               | Najwyższą pensje posiadają osoby na stanowisku DevOpsa. Środowiska w jakich pracują różnią się od głównych na jakie jest zapotrzebowanie. Bardzo dużo DevOpsów pracuje w Linuxie i Dockerze oraz korzysta z środowisk rzadziej używanych takich jak  Kubernetes, Terraformm, CI/CD. |
+
+Przygotowując ofertę na kursy języków programowania warto sprofilować ją pod kontem _Link Group_, ponieważ jest to firma z największą liczbą ofert o prace. Poszukuje ona pracowników głównie na stanowisko backend developera. Korzystne byłoby zaoferowanie kursów z Javy, SQLa, oraz .Neta, ponieważ są to najczęściej pojawiające się wymagania dla backendu. 
+
+Biorąc pod uwagę, że najlepiej płatną pozycją jest DevOps, należałoby żądać najwyższych cen za kursy dla środowisk Linux, Docker, AWS oraz Kubernetes.
+  
+
+[id]: https://nofluffjobs.com/pl
+
+
+
