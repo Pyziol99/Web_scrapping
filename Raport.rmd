@@ -34,10 +34,10 @@ opts_knit$set(width = 75)
 /* Jeśli znasz CSS,  to możesz wygląd dostosować do swoich preferencji */
 /* Możesz też usunąć tę część: style  */
 
-tr {font-family: 'Fira Mono'; font-size:90%}
-code, kbd,pre,samp {font-family: 'Fira Mono';
+tr {font-family: _Fira Mono_; font-size:90%}
+code, kbd,pre,samp {font-family: _Fira Mono_;
                     background-color: rgba(237, 125, 49, 0.04)}
-body, h1, h2, h3, h4, h5 {font-family: 'Fira Sans'}
+body, h1, h2, h3, h4, h5 {font-family: _Fira Sans_}
 
 </style>
 
@@ -73,18 +73,26 @@ library(httr)
 library(quantmod)
 
 ```
-Aby móc uzyskać dane potrzebne do analizy należało przeprowadzić szereg czynności, które zostały podzielone na załączniki. 
-### "GET_urls.R" 
+Aby móc uzyskać dane potrzebne do analizy należało przeprowadzić szereg czynności, które zostały podzielone na załączniki.
+### "Functions.R"
+ Funkcja _GET_urls_ tworzy katalog linków do ofert pracy na podstawie strony wyszukiania na portalu, celem pozyskania szczegółowych danych do analizy. Linki są uzyskiwane poprzez użycie odpowiednich- oryginalnych elementów _CSS_. W kodzie została uwzględniona obsługa błędów w ramach funkcji _tryCatch_, aby uniknąć przedwczesnego zakończenia ściągania danych w wyniku błędu.
+
+ Funkcja _GET_Content_ ściąga przy wykorzystaniu metody _GET_ potrzebne dane na podstawie katalogu linków utworzonego za pomocą autorskiej funkcji _GET_urls_. Funkcja działa analogicznie do funkcji GET_urls, zamiast linków ściąga konkretne dane.
+
+ Funkcja _SalaryContract_ tworzy nową kolumnę na podstawie wybranej kolumny z ramki danych z rozdzielonymi zarobkami. Nadając jej nazwę w zależności od rodzaju kontraktu to jest Business to Business, Umowa o Pracę, Umowa Zlecenie, i Umowa o Dzieło. W każdej komórce umieszcza widełki płacowe, informacje co do okresu płacy oraz waluty.
+
+ Funkcja _ConversionToPLN_- już przetworzone kolumny z podziałem na rodzaje zarobków rozdziela ze względu na maksymalne i minimalne widełki w osobnych kolumnach oraz przewalutowuje na podstawie obecnych kursów i wyrównuje stawki tygodniowe i dzienne do stawek miesięcznych. Funkcja bierze aktualny kurs danych z serwisu _Yahoo Finance_ przy użyciu funkcji _getQuote_ z biblioteki _quantmod_. Ten zabieg znacznie spowalnia iterację już nie zalecanej do użytu w środowisku R pętli for. Aby uniknąć każdorazowej komunikacji ze stroną przy wywoływaniu funkcji umieszczone zostały zamiennie sztywne kursy wymiany walut na PLN na dzień 17.06.2022
+
+ Funkcja _Cleaning_requirements_ która tworzy rozdziela kolumnę requirements na kolumny logiczne za pomocą funckji map dla danej umiejętności, w zależności czy jest ona wymagana w danej ofercie. funckja wybiera wymagania, które pojawiają się w przynajmniej 10% ofert.
+
+
+### "GET_data.R"
 Pierwszą czynnością po wczytaniu danych było stworzenie bazy wszystkich stron katalogu do wyszukiwania ofert. Aby uzyskać maksymalną liczbę ofert zaznaczono wszystkie możliwe lokalizacje, a następnie utworzono 442 linki do kolejnych stron wyszukiwania na portalu.
 
-Następnie z wygenerowanych linków rozpoczęto ściąganie linków w pętli for do konkretnych ofert pracy. Linki są uzyskiwane poprzez użycie odpowiednich- oryginalnych elementów _CSS_. W kodzie została uwzględniona obsługa błędów w ramach funkcji _tryCatch_, aby uniknąć przedwczesnego zakończenia ściągania danych w wyniku błędu. 
-
-
-### "GET_Content.R" 
-Po uzyskaniu konkretnych linków do ofert, na ich podstawie, po wczytaniu wyeksportowanego wcześniej pliku _.csv_ rozpoczęto ściąganie danych szczegółowych. Procedura ściągania jest analogiczna do pozyskiwania linków URL. Przy ostatniej iteracji pętli dane są zapisywane jako ramka danych oraz eksportowane do pliku.
+Następnie z wygenerowanych linków rozpoczęto ściąganie linków w pętli for do konkretnych ofert pracy.
 
 ### "Data_initial_cleaning.R"
-Otrzymano ramkę danych o 8808 wierszach i 6 linijkach. 
+Otrzymano ramkę danych o 8808 wierszach i 6 linijkach.
 We wstępnej fazie czyszczenia należało:
  1. Zmienić nazwę urlsCatalog na url
  2. Usunąć bezpłatne oferty stażowe
@@ -93,19 +101,13 @@ We wstępnej fazie czyszczenia należało:
  5. Zastąpić kolumnę _category_ jako _position_.
  6. Wybrać tylko minimalny poziom doświadczenia i nadpisać kolumnę _level_
  7. Usunąć polskie znaki z kolumny _salary_
- 
-### "Functions.R" 
- Funkcja _SalaryContract_ tworzy nową kolumnę na podstawie wybranej kolumny z ramki danych z rozdzielonymi zarobkami. Nadając jej nazwę w zależności od rodzaju kontraktu to jest Business to Business, Umowa o Pracę, Umowa Zlecenie, i Umowa o Dzieło. W każdej komórce umieszcza widełki płacowe, informacje co do okresu płacy oraz waluty. 
- 
- Funkcja _ConversionToPLN_- już przetworzone kolumny z podziałem na rodzaje zarobków rozdziela ze względu na maksymalne i minimalne widełki w osobnych kolumnach oraz przewalutowuje na podstawie obecnych kursów i wyrównuje stawki tygodniowe i dzienne do stawek miesięcznych. Funkcja bierze aktualny kurs danych z serwisu _Yahoo Finance_ przy użyciu funkcji _getQuote_ z biblioteki _quantmod_. Ten zabieg znacznie spowalnia iterację już nie zalecanej do użytu w środowisku R pętli for. Aby uniknąć każdorazowej komunikacji ze stroną przy wywoływaniu funkcji umieszczone zostały zamiennie sztywne kursy wymiany walut na PLN na dzień 17.06.2022
-
- Funkcja _Cleaning_requirements_ która tworzy rozdziela kolumnę requirements na kolumny logiczne za pomocą funckji map dla danej umiejętności, w zależności czy jest ona wymagana w danej ofercie. funckja wybiera wymagania, które pojawiają się w przynajmniej 10% ofert.
 
 ### "Data_cleaning_salary.R"
- W kolejnym załączniku który porządkuje początkową kolumnę Salary w pierwszej kolejności zarobki dzielone są według znaku "|" funkcją _stri_split_ i zapisuje do ramki danych. Powstaje 9 kolumn z zarobkami z których tylko pierwsza nie zawiera pustych wartości. Następnie dla 3 pierwszych kolumn zarobkowych używa kolejno wcześniej utworzonych funkcji _SalaryContract_, a następnie _ConversionToPLN_. Na końcu usuwa niepotrzebne już kolumny. Tym samym zwraca ramkę danych po wstępnym czyszczeniu z kolumną salary rozbitą na minimalną i maksymalną wartość zarobku dla danego typu umowy oraz zunifikowaną co do waluty i okresu płacy. Wynik zapisuje do pliku. 
- 
+ W kolejnym załączniku który porządkuje początkową kolumnę Salary w pierwszej kolejności zarobki dzielone są według znaku "|" funkcją _stri_split_ i zapisuje do ramki danych. Powstaje 9 kolumn z zarobkami z których tylko pierwsza nie zawiera pustych wartości. Następnie dla 3 pierwszych kolumn zarobkowych używa kolejno wcześniej utworzonych funkcji _SalaryContract_, a następnie _ConversionToPLN_. Na końcu usuwa niepotrzebne już kolumny. Tym samym zwraca ramkę danych po wstępnym czyszczeniu z kolumną salary rozbitą na minimalną i maksymalną wartość zarobku dla danego typu umowy oraz zunifikowaną co do waluty i okresu płacy. Wynik zapisuje do pliku.
+
 ### "Final_dataset.R"
-W ostatnim pliku jest tworzona końcowa ramka danych, która zlepia za pomocą funkcji _cbind_ ramkęutworzone w pliku _"Data_cleaning_salary.R"_ oraz za pomocą funkcji _Cleaning_requirements_. Została uzyskana ramka danych o 4169 wierszach i 115 kolumnach. Zostanie ona poddana właściwej analizie. Dane zostały zapisane w pliku _Final_dataset.csv_
+W ostatnim pliku jest tworzona końcowa ramka danych, która zlepia za pomocą funkcji _cbind_ ramkę utworzone w pliku _"Data_cleaning_salary.R"_ oraz za pomocą funkcji _Cleaning_requirements_. Została uzyskana ramka danych o 4169 wierszach i 115 kolumnach. Zostanie ona poddana właściwej analizie. Dane zostały zapisane w pliku _Final_dataset.csv_
+
 
 # Analiza danych
 ## Analiza stanowisk i wymagań 
